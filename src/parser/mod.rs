@@ -49,6 +49,7 @@ pub trait Parser: ParserConfig {
 
     /// Parses a macro name, returning the name and the extracted variables
     fn parse_name<'a>(&self, mut input: &'a str) -> Result<(String, Vec<&'a str>), ParseError> {
+        let original = input.to_string();
         let mut name = String::new();
         let mut vars = vec![];
         let start = self.interpolation_start();
@@ -61,6 +62,8 @@ pub trait Parser: ParserConfig {
                     name.push_str(&end);
                     vars.push(&input[start_index + start.len()..start_index + start.len() + end_index]);
                     input = &input[start_index + start.len() + end_index + end.len()..];
+                } else {
+                    return Err(ParseError::UnclosedVariableError(original));
                 }
             } else {
                 name.push_str(input);
@@ -72,6 +75,7 @@ pub trait Parser: ParserConfig {
 
     /// Parses a line as code, returning the parsed `Line` object
     fn parse_line<'a>(&self, line_number: usize, input: &'a str) -> Result<Line<'a>, ParseError> {
+        let original = input.to_string();
         let indent_len = input.chars()
             .take_while(|ch| ch.is_whitespace())
             .collect::<String>()
@@ -105,6 +109,8 @@ pub trait Parser: ParserConfig {
                     source.push(Segment::Source(&rest[..start_index]));
                     source.push(Segment::MetaVar(&rest[start_index + start.len()..start_index + start.len() + end_index]));
                     rest = &rest[start_index + start.len() + end_index + end.len()..];
+                } else {
+                    return Err(ParseError::UnclosedVariableError(original));
                 }
             } else {
                 if !rest.is_empty() {
@@ -125,7 +131,11 @@ pub trait Parser: ParserConfig {
 
 /// A generic parse error
 #[derive(Debug)]
-pub enum ParseError {} // is there even such a thing as a parse error? who knows.
+pub enum ParseError {
+    /// Error for unclosed variables, e.g. @{ without }
+    UnclosedVariableError(String),
+} // is there even such a thing as a parse error? who knows.
+
 
 /// A `Printer` can invert the parsing process, printing the code blocks how they should be
 /// rendered in the documentation text.
