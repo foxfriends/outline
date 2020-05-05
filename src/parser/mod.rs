@@ -7,18 +7,18 @@
 //! out correctly.
 
 pub mod bird;
-pub mod html;
-pub mod md;
 pub mod tex;
+pub mod md;
+pub mod html;
 
 pub use self::bird::BirdParser;
-pub use self::html::HtmlParser;
 pub use self::md::MdParser;
 pub use self::tex::TexParser;
+pub use self::html::HtmlParser;
 
-use crate::document::code::{CodeBlock, Line, Segment, Source};
-use crate::document::text::TextBlock;
 use crate::document::Document;
+use crate::document::code::{Line, CodeBlock, Source, Segment};
+use crate::document::text::TextBlock;
 
 /// A `ParserConfig` can be used to customize the built in parsing methods
 pub trait ParserConfig {
@@ -42,11 +42,11 @@ pub trait ParserConfig {
 pub trait Parser: ParserConfig {
     /// The type of error for this parser
     type Error: std::error::Error;
-
+    
     /// Parses the text part of the document. Should delegate the code section on a line-by-line
     /// basis to the built in code parser.
     fn parse<'a>(&self, input: &'a str) -> Result<Document<'a>, Self::Error>;
-
+    
     /// Parses a macro name, returning the name and the extracted variables
     fn parse_name<'a>(&self, mut input: &'a str) -> Result<(String, Vec<&'a str>), ParseError> {
         let original = input;
@@ -60,9 +60,7 @@ pub trait Parser: ParserConfig {
                     name.push_str(&input[..start_index]);
                     name.push_str(&start);
                     name.push_str(&end);
-                    vars.push(
-                        &input[start_index + start.len()..start_index + start.len() + end_index],
-                    );
+                    vars.push(&input[start_index + start.len()..start_index + start.len() + end_index]);
                     input = &input[start_index + start.len() + end_index + end.len()..];
                 } else {
                     return Err(ParseError::UnclosedVariableError(original.to_owned()));
@@ -74,12 +72,11 @@ pub trait Parser: ParserConfig {
         }
         return Ok((name, vars));
     }
-
+    
     /// Parses a line as code, returning the parsed `Line` object
     fn parse_line<'a>(&self, line_number: usize, input: &'a str) -> Result<Line<'a>, ParseError> {
         let original = input;
-        let indent_len = input
-            .chars()
+        let indent_len = input.chars()
             .take_while(|ch| ch.is_whitespace())
             .collect::<String>()
             .len();
@@ -90,7 +87,7 @@ pub trait Parser: ParserConfig {
         } else {
             (rest, None)
         };
-
+        
         if rest.starts_with(self.macro_start()) {
             if let Some(end_index) = rest.find(self.macro_end()) {
                 let (name, scope) = self.parse_name(&rest[self.macro_start().len()..end_index])?;
@@ -98,11 +95,11 @@ pub trait Parser: ParserConfig {
                     line_number,
                     indent,
                     source: Source::Macro { name, scope },
-                    comment,
+                    comment
                 });
             }
         }
-
+        
         let mut source = vec![];
         let start = self.interpolation_start();
         let end = self.interpolation_end();
@@ -110,9 +107,7 @@ pub trait Parser: ParserConfig {
             if let Some(start_index) = rest.find(start) {
                 if let Some(end_index) = rest[start_index + start.len()..].find(end) {
                     source.push(Segment::Source(&rest[..start_index]));
-                    source.push(Segment::MetaVar(
-                        &rest[start_index + start.len()..start_index + start.len() + end_index],
-                    ));
+                    source.push(Segment::MetaVar(&rest[start_index + start.len()..start_index + start.len() + end_index]));
                     rest = &rest[start_index + start.len() + end_index + end.len()..];
                 } else {
                     return Err(ParseError::UnclosedVariableError(original.to_owned()));
@@ -124,7 +119,7 @@ pub trait Parser: ParserConfig {
                 break;
             }
         }
-
+        
         Ok(Line {
             line_number,
             indent,
@@ -141,15 +136,16 @@ pub enum ParseError {
     UnclosedVariableError(String),
 } // is there even such a thing as a parse error? who knows.
 
+
 /// A `Printer` can invert the parsing process, printing the code blocks how they should be
 /// rendered in the documentation text.
 pub trait Printer: ParserConfig {
     /// Prints a code block
     fn print_code_block<'a>(&self, block: &CodeBlock<'a>) -> String;
-
+    
     /// Prints a text block
     fn print_text_block<'a>(&self, block: &TextBlock<'a>) -> String;
-
+    
     /// Fills a name with its placeholders
     fn print_name(&self, mut name: String, vars: &[&str]) -> String {
         let start = self.interpolation_start();
@@ -161,7 +157,7 @@ pub trait Printer: ParserConfig {
         }
         name
     }
-
+    
     /// Prints a line of a code block
     fn print_line<'a>(&self, line: &Line<'a>, print_comments: bool) -> String {
         let mut output = line.indent.to_string();
@@ -170,7 +166,7 @@ pub trait Printer: ParserConfig {
                 output.push_str(self.macro_start());
                 output.push_str(&self.print_name(name.clone(), &scope));
                 output.push_str(self.macro_end());
-            }
+            },
             Source::Source(segments) => {
                 for segment in segments {
                     match segment {
