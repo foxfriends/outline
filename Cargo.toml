@@ -14,7 +14,7 @@ name = "outline"
 path = "src/lib.rs"
 
 [features]
-bin = ["clap", "toml", "either"]
+bin = ["dep:clap", "dep:toml", "dep:either"]
 
 [[bin]]
 name = "outline"
