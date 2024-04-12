@@ -4,7 +4,7 @@
 #[derive(Debug, Default)]
 pub struct TextBlock<'a> {
     /// The source text
-    text: Vec<&'a str>
+    text: Vec<&'a str>,
 }
 
 impl<'a> TextBlock<'a> {

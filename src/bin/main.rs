@@ -1,10 +1,10 @@
-use std::fs::{self, File};
-use std::io::{Read, Write, stdin};
-use std::path::PathBuf;
-use clap::{Arg, App, SubCommand};
-use serde_derive::Deserialize;
+use clap::{App, Arg, SubCommand};
 use either::Either::{self, *};
-use outline::parser::{Parser, Printer, BirdParser, MdParser, TexParser, HtmlParser};
+use outline::parser::{BirdParser, HtmlParser, MdParser, Parser, Printer, TexParser};
+use serde_derive::Deserialize;
+use std::fs::{self, File};
+use std::io::{stdin, Read, Write};
+use std::path::PathBuf;
 
 #[derive(Deserialize, Default)]
 struct AnyConfig {
@@ -57,6 +57,12 @@ fn main() {
             .value_name("language")
             .help("The language to output the tangled code in. Only code blocks in this language will be used.")
             .takes_value(true))
+        .arg(Arg::with_name("extension")
+            .short("x")
+            .long("extension")
+            .value_name("extension")
+            .help("The file extension to output files with. Defaults to the same as language.")
+            .takes_value(true))
         .arg(Arg::with_name("input")
             .help("The input source file(s). If none are specified, read from STDIN, and print generated code to STDOUT.")
             .value_name("input")
@@ -91,7 +97,7 @@ fn main() {
                             eprintln!("Could not parse config file \"{}\": {}", file_name, error);
                             return;
                         }
-                    }
+                    },
                     Err(error) => {
                         eprintln!("Could not read config file \"{}\": {}", file_name, error);
                         return;
@@ -110,8 +116,12 @@ fn main() {
         None => Right(matches.value_of("code_dir").map(PathBuf::from)),
     };
 
-    enum Input<'a> { File(&'a str), Stdin }
-    let inputs = matches.subcommand_matches("weave")
+    enum Input<'a> {
+        File(&'a str),
+        Stdin,
+    }
+    let inputs = matches
+        .subcommand_matches("weave")
         .or(matches.subcommand_matches("tangle"))
         .unwrap_or(&matches)
         .values_of("input")
@@ -126,21 +136,26 @@ fn main() {
                 let contents = match fs::read_to_string(&file_name) {
                     Ok(contents) => contents,
                     Err(error) => {
-                        eprintln!("Could not read source file \"{}\": {}", file_name.to_str().unwrap(), error);
+                        eprintln!(
+                            "Could not read source file \"{}\": {}",
+                            file_name.to_str().unwrap(),
+                            error
+                        );
                         return;
                     }
                 };
 
-                let style_type = file_name.extension()
+                let style_type = file_name
+                    .extension()
                     .and_then(|osstr| osstr.to_str())
                     .map(|s| s.to_owned());
 
-                let code_type = file_name.file_stem()
-                    .and_then(|stem| PathBuf::from(stem)
+                let code_type = file_name.file_stem().and_then(|stem| {
+                    PathBuf::from(stem)
                         .extension()
                         .and_then(|osstr| osstr.to_str())
                         .map(|s| s.to_owned())
-                    );
+                });
                 (Some(file_name), contents, style_type, code_type)
             }
             Input::Stdin => {
@@ -157,15 +172,29 @@ fn main() {
         };
 
         let language = matches.value_of("language");
+        let extension = matches.value_of("extension").or(language);
         let entrypoint = matches.value_of("entrypoint");
 
-        match matches.value_of("style").map(|s| s.to_string()).or(style_type).unwrap_or("md".to_string()).as_str() {
+        match matches
+            .value_of("style")
+            .map(|s| s.to_string())
+            .or(style_type)
+            .unwrap_or("md".to_string())
+            .as_str()
+        {
             "bird" => {
                 let default = BirdParser::default();
                 let parser = any_config.bird.as_ref().unwrap_or(&default);
-                if let Err(error) = compile(parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language) {
+                if let Err(error) = compile(
+                    parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language,
+                    extension,
+                ) {
                     if let Some(file_name) = file_name {
-                        eprintln!("Failed to compile source file \"{}\": {}", file_name.to_str().unwrap(), error);
+                        eprintln!(
+                            "Failed to compile source file \"{}\": {}",
+                            file_name.to_str().unwrap(),
+                            error
+                        );
                     } else {
                         eprintln!("Failed to compile from STDIN: {}", error);
                         std::process::exit(1);
@@ -175,13 +204,21 @@ fn main() {
             }
             "md" => {
                 let default = MdParser::default();
-                let parser = any_config.md
+                let parser = any_config
+                    .md
                     .as_ref()
                     .unwrap_or(&default)
                     .default_language(code_type);
-                if let Err(error) = compile(&parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language) {
+                if let Err(error) = compile(
+                    &parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language,
+                    extension,
+                ) {
                     if let Some(file_name) = file_name {
-                        eprintln!("Failed to compile source file \"{}\": {}", file_name.to_str().unwrap(), error);
+                        eprintln!(
+                            "Failed to compile source file \"{}\": {}",
+                            file_name.to_str().unwrap(),
+                            error
+                        );
                     } else {
                         eprintln!("Failed to compile from STDIN: {}", error);
                         std::process::exit(1);
@@ -191,13 +228,21 @@ fn main() {
             }
             "tex" => {
                 let default = TexParser::default();
-                let parser = any_config.tex
+                let parser = any_config
+                    .tex
                     .as_ref()
                     .unwrap_or(&default)
                     .default_language(code_type);
-                if let Err(error) = compile(&parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language) {
+                if let Err(error) = compile(
+                    &parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language,
+                    extension,
+                ) {
                     if let Some(file_name) = file_name {
-                        eprintln!("Failed to compile source file \"{}\": {}", file_name.to_str().unwrap(), error);
+                        eprintln!(
+                            "Failed to compile source file \"{}\": {}",
+                            file_name.to_str().unwrap(),
+                            error
+                        );
                     } else {
                         eprintln!("Failed to compile from STDIN: {}", error);
                         std::process::exit(1);
@@ -207,13 +252,21 @@ fn main() {
             }
             "html" => {
                 let default = HtmlParser::default();
-                let parser = any_config.html
+                let parser = any_config
+                    .html
                     .as_ref()
                     .unwrap_or(&default)
                     .default_language(code_type);
-                if let Err(error) = compile(&parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language) {
+                if let Err(error) = compile(
+                    &parser, &contents, &doc_dir, &code_dir, &file_name, entrypoint, language,
+                    extension,
+                ) {
                     if let Some(file_name) = file_name {
-                        eprintln!("Failed to compile source file \"{}\": {}", file_name.to_str().unwrap(), error);
+                        eprintln!(
+                            "Failed to compile source file \"{}\": {}",
+                            file_name.to_str().unwrap(),
+                            error
+                        );
                     } else {
                         eprintln!("Failed to compile from STDIN: {}", error);
                         std::process::exit(1);
@@ -240,6 +293,7 @@ fn compile<P>(
     file_name: &Option<PathBuf>,
     entrypoint: Option<&str>,
     language: Option<&str>,
+    extension: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     P: Parser + Printer,
@@ -269,8 +323,8 @@ where
             if let Some(file_name) = file_name {
                 let mut file_path = code_dir.clone();
                 file_path.push(file_name.file_stem().unwrap());
-                if let Some(language) = language {
-                    file_path.set_extension(language);
+                if let Some(extension) = extension {
+                    file_path.set_extension(extension);
                 }
                 fs::create_dir_all(file_path.parent().unwrap()).unwrap();
                 let mut code_file = File::create(file_path).unwrap();

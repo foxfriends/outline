@@ -1,8 +1,8 @@
 //! Representation of the code parts of the AST
 
-use std::collections::HashMap;
 use super::{CompileError, CompileErrorKind};
 use crate::util::try_collect::TryCollectExt;
+use std::collections::HashMap;
 
 /// A `Segment` is some of the raw source text.
 #[derive(Clone, Debug)]
@@ -21,10 +21,10 @@ pub enum Source<'a> {
         /// The name of the macro
         name: String,
         /// The meta-variable values to interpolate
-        scope: Vec<&'a str>
+        scope: Vec<&'a str>,
     },
     /// Source text, possibly including meta variable interpolations
-    Source(Vec<Segment<'a>>)
+    Source(Vec<Segment<'a>>),
 }
 
 /// A `Line` defines a line of code.
@@ -42,38 +42,44 @@ pub struct Line<'a> {
 }
 
 impl<'a> Line<'a> {
-    fn compile_with(&self, code_blocks: &HashMap<Option<&str>, CodeBlock<'a>>, scope: &HashMap<&str, &str>) -> Result<String, CompileError> {
+    fn compile_with(
+        &self,
+        code_blocks: &HashMap<Option<&str>, CodeBlock<'a>>,
+        scope: &HashMap<&str, &str>,
+    ) -> Result<String, CompileError> {
         match &self.source {
             Source::Source(segments) => {
                 let code = segments
                     .iter()
                     .map(|segment| match segment {
                         Segment::Source(source) => Ok(*source),
-                        Segment::MetaVar(name) => scope.get(name)
-                            .map(|var| *var)
-                            .ok_or(CompileError::Single {
+                        Segment::MetaVar(name) => {
+                            scope.get(name).map(|var| *var).ok_or(CompileError::Single {
                                 line_number: self.line_number,
                                 kind: CompileErrorKind::UnknownMetaVariable(name.to_string()),
-                            }),
+                            })
+                        }
                     })
                     .try_collect()
                     .map(|vec: Vec<_>| vec.join(""))?;
                 Ok(format!("{}{}", self.indent, code))
-            },
-            Source::Macro { name, scope } => code_blocks.get(&Some(name))
+            }
+            Source::Macro { name, scope } => code_blocks
+                .get(&Some(name))
                 .ok_or(CompileError::Single {
                     line_number: self.line_number,
                     kind: CompileErrorKind::UnknownMacro(name.to_string()),
                 })
-                .and_then(|block| block
-                    .compile_with(code_blocks, block.assign_vars(scope))
-                    .map(|code| code
-                        .split("\n")
-                        .map(|line| format!("{}{}", self.indent, line))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                    )
-                ),
+                .and_then(|block| {
+                    block
+                        .compile_with(code_blocks, block.assign_vars(scope))
+                        .map(|code| {
+                            code.split("\n")
+                                .map(|line| format!("{}{}", self.indent, line))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                }),
         }
     }
 }
@@ -95,7 +101,9 @@ pub struct CodeBlock<'a> {
 
 impl<'a> CodeBlock<'a> {
     /// Creates a new empty `CodeBlock`
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Indents this code block
     pub fn indented(self, indent: &'a str) -> Self {
@@ -104,12 +112,19 @@ impl<'a> CodeBlock<'a> {
 
     /// Names this code block
     pub fn named(self, name: String, vars: Vec<&'a str>) -> Self {
-        Self { name: Some(name), vars, ..self }
+        Self {
+            name: Some(name),
+            vars,
+            ..self
+        }
     }
 
     /// Sets the language of this code block
     pub fn in_language(self, language: String) -> Self {
-        Self { language: Some(language), ..self }
+        Self {
+            language: Some(language),
+            ..self
+        }
     }
 
     /// Adds a line to this code block
@@ -123,7 +138,10 @@ impl<'a> CodeBlock<'a> {
     }
 
     /// "Compiles" this code block into its output code
-    pub fn compile(&self, code_blocks: &HashMap<Option<&str>, CodeBlock<'a>>) -> Result<String, CompileError> {
+    pub fn compile(
+        &self,
+        code_blocks: &HashMap<Option<&str>, CodeBlock<'a>>,
+    ) -> Result<String, CompileError> {
         self.compile_with(code_blocks, HashMap::default())
     }
 
@@ -132,7 +150,11 @@ impl<'a> CodeBlock<'a> {
         self.source.first().map(|line| line.line_number)
     }
 
-    fn compile_with(&self, code_blocks: &HashMap<Option<&str>, CodeBlock<'a>>, scope: HashMap<&str, &str>) -> Result<String, CompileError> {
+    fn compile_with(
+        &self,
+        code_blocks: &HashMap<Option<&str>, CodeBlock<'a>>,
+        scope: HashMap<&str, &str>,
+    ) -> Result<String, CompileError> {
         self.source
             .iter()
             .map(|line| line.compile_with(code_blocks, &scope))
